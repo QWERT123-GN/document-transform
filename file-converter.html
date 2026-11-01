@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>文件格式转换器</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --primary: #4f46e5;
+    --primary-d: #4338ca;
+    --border: #e5e7eb;
+    --ok: #16a34a;
+    --err: #dc2626;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 20px 64px; }
+  header h1 { font-size: 26px; margin: 0 0 6px; }
+  header p { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .drop {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: .2s;
+    color: var(--muted);
+  }
+  .drop:hover, .drop.over { border-color: var(--primary); background: #f8faff; color: var(--primary); }
+  .drop strong { color: var(--text); display:block; font-size: 16px; margin-bottom: 4px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .field { flex: 1 1 200px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+  select, input[type=number] {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 10px; font-size: 14px; background: #fff; color: var(--text);
+  }
+  .opt { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .opt.show { display: block; }
+  .opt-inline { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--muted); }
+  input[type=range] { flex:1; }
+  .btn {
+    background: var(--primary); color: #fff; border: none; padding: 12px 22px;
+    border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: .15s; margin-top: 18px;
+  }
+  .btn:hover:not(:disabled) { background: var(--primary-d); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .file-info { font-size: 14px; margin-bottom: 4px; }
+  .file-info b { color: var(--primary); }
+  .badge { display:inline-block; background:#eef2ff; color:var(--primary-d); font-size:12px;
+    padding:2px 10px; border-radius:999px; margin-left:8px; }
+  .status { margin-top: 16px; font-size: 14px; min-height: 20px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
+  .dl { display:inline-block; margin-top:10px; background:var(--ok); color:#fff;
+    text-decoration:none; padding:10px 18px; border-radius:10px; font-weight:600; font-size:14px; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--text); }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; }
+  th { background: #f9fafb; }
+  .hidden { display: none; }
+  .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔄 文件格式转换器</h1>
+    <p>纯前端运行，文件不上传服务器，本地即可完成格式转换。支持图片与 JSON / CSV / XML / YAML 互转。</p>
+  </header>
+
+  <!-- 1. 上传 -->
+  <div class="card">
+    <div class="drop" id="drop">
+      <strong>点击选择文件，或将文件拖到这里</strong>
+      <span>支持图片（PNG/JPG/WEBP/GIF/BMP）与文本数据（JSON/CSV/XML/YAML）</span>
+    </div>
+    <input type="file" id="file" class="hidden" />
+  </div>
+
+  <!-- 2. 配置 -->
+  <div class="card hidden" id="configCard">
+    <div class="file-info" id="fileInfo"></div>
+    <div class="row" style="margin-top:14px;">
+      <div class="field">
+        <label>源格式</label>
+        <input type="text" id="srcFmt" disabled style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#f9fafb;color:var(--muted);" />
+      </div>
+      <div class="field">
+        <label>目标格式</label>
+        <select id="targetFmt"></select>
+      </div>
+    </div>
+
+    <!-- 图片选项 -->
+    <div class="opt" id="imgOpt">
+      <div class="opt-inline">
+        <span style="min-width:48px;">质量</span>
+        <input type="range" id="quality" min="0.1" max="1" step="0.05" value="0.92" />
+        <span id="qualityVal">0.92</span>
+      </div>
+      <div class="field" style="margin-top:12px;">
+        <label>最大宽度（可选，留空不缩放）</label>
+        <input type="number" id="maxWidth" placeholder="如 1000" min="1" />
+      </div>
+    </div>
+
+    <!-- 数据选项 -->
+    <div class="opt" id="dataOpt">
+      <div class="field">
+        <label>CSV 分隔符</label>
+        <select id="delim">
+          <option value=",">逗号 ,</option>
+          <option value=";">分号 ;</option>
+          <option value="\t">制表符 Tab</option>
+        </select>
+      </div>
+      <div class="hint" id="dataHint"></div>
+    </div>
+
+    <button class="btn" id="convertBtn">开始转换</button>
+    <div class="status" id="status"></div>
+    <a id="downloadLink" class="dl hidden" download>⬇️ 下载转换结果</a>
+  </div>
+
+  <!-- 3. 支持说明 -->
+  <div class="card">
+    <details>
+      <summary>支持的转换类型</summary>
+      <table>
+        <tr><th>类别</th><th>可转换</th><th>说明</th></tr>
+        <tr><td>图片</td><td>PNG ↔ JPG ↔ WEBP</td><td>基于浏览器 Canvas，GIF/BMP 仅作输入</td></tr>
+        <tr><td>JSON</td><td>→ CSV / XML / YAML / 格式化 / 压缩</td><td>对象数组可转 CSV 表格</td></tr>
+        <tr><td>CSV</td><td>→ JSON</td><td>首行为表头</td></tr>
+        <tr><td>XML</td><td>→ JSON</td><td>保留 @attributes 属性</td></tr>
+        <tr><td>YAML</td><td>→ JSON</td><td>基础 YAML 解析</td></tr>
+        <tr><td>Markdown</td><td>→ HTML</td><td>标题/列表/代码块/链接/图片/引用等</td></tr>
+        <tr><td>HTML</td><td>→ Markdown</td><td>常见标签反向转换</td></tr>
+        <tr><td>TXT</td><td>→ Base64 编/解码 / URL 编/解码 / 大小写</td><td>文本小工具</td></tr>
+      </table>
+    </details>
+  </div>
+</div>
+
+<script>
+/* ---------- 工具函数 ---------- */
+function getExt(name){ return name.split('.').pop().toLowerCase(); }
+function escapeXml(s){ return String(s).replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c])); }
+
+/* ---------- 文本/数据转换 ---------- */
+function jsonToCsv(json, delim=','){
+  let data = json;
+  if(!Array.isArray(data)){
+    data = (data && typeof data==='object') ? [data] : [{value:json}];
+  }
+  if(data.length===0) return '';
+  const headers=new Set();
+  data.forEach(r=>{ if(r&&typeof r==='object') Object.keys(r).forEach(k=>headers.add(k)); });
+  const keys=[...headers];
+  const esc=v=>{
+    if(v===null||v===undefined) return '';
+    const s = (typeof v==='object') ? JSON.stringify(v) : String(v);
+    return /[",\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  };
+  const lines=[keys.join(delim)];
+  data.forEach(r=>{ if(r&&typeof r==='object') lines.push(keys.map(k=>esc(r[k])).join(delim)); });
+  return lines.join('\n');
+}
+
+function csvToJson(text, delim=','){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim()!=='');
+  if(!lines.length) return [];
+  const parse=line=>{
+    const out=[]; let cur='', inQ=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(inQ){
+        if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else inQ=false; }
+        else cur+=c;
+      } else {
+        if(c==='"') inQ=true;
+        else if(c===delim){ out.push(cur); cur=''; }
+        else cur+=c;
+      }
+    }
+    out.push(cur); return out;
+  };
+  const headers=parse(lines[0]);
+  return lines.slice(1).map(l=>{
+    const vals=parse(l); const obj={};
+    headers.forEach((h,i)=>{
+      let v=vals[i]??'';
+      if(v!=='' && !isNaN(v) && v.trim()!=='') v=Number(v);
+      obj[h.trim()]=v;
+    });
+    return obj;
+  });
+}
+
+function jsonToXml(json, root='root'){
+  const toXml=(val,name)=>{
+    if(Array.isArray(val)) return val.map(v=>toXml(v, name.replace(/s$/,'')||'item')).join('');
+    if(val&&typeof val==='object'){
+      const inner=Object.entries(val).map(([k,v])=>toXml(v,k)).join('');
+      return `<${name}>${inner}</${name}>`;
+    }
+    return `<${name}>${escapeXml(val)}</${name}>`;
+  };
+  return '<?xml version="1.0" encoding="UTF-8"?>\n'+toXml(json, root);
+}
+
+function xmlToJson(str){
+  const doc=new DOMParser().parseFromString(str,'application/xml');
+  if(doc.querySelector('parsererror')) throw new Error('XML 解析失败，请检查格式');
+  const convert=node=>{
+    if(node.nodeType===3) { const t=node.nodeValue.trim(); return t||null; }
+    if(node.nodeType!==1) return null;
+    const obj={};
+    if(node.attributes.length){
+      obj['@attributes']={};
+      for(const a of node.attributes) obj['@attributes'][a.name]=a.value;
+    }
+    const kids=[...node.childNodes].filter(n=>n.nodeType===1);
+    if(!kids.length){
+      const txt=node.textContent.trim();
+      return txt ? (obj['@attributes']?Object.assign({_text:txt},obj):txt) : (obj['@attributes']||'');
+    }
+    kids.forEach(ch=>{
+      const val=convert(ch);
+      if(val===null) return;
+      const n=ch.nodeName;
+      if(obj[n]!==undefined){ if(!Array.isArray(obj[n])) obj[n]=[obj[n]]; obj[n].push(val); }
+      else obj[n]=val;
+    });
+    return obj;
+  };
+  return convert(doc.documentElement);
+}
+
+function jsonToYaml(json, indent=0){
+  const pad='  '.repeat(indent);
+  const scalar=v=>{
+    if(v===null||v===undefined) return 'null';
+    if(typeof v==='number'||typeof v==='boolean') return String(v);
+    const s=String(v);
+    return (/[:#\-?\[\]{}&*!|>'"%@`\n]/.test(s)||s==='') ? JSON.stringify(s) : s;
+  };
+  const val=v=> (v&&typeof v==='object') ? '\n'+jsonToYaml(v,indent+1) : ' '+scalar(v);
+  if(Array.isArray(json)) return json.length? json.map(v=>pad+'-'+val(v)).join('\n') : '[]';
+  if(json&&typeof json==='object'){
+    const ks=Object.keys(json);
+    return ks.length? ks.map(k=>pad+k+':'+val(json[k])).join('\n') : '{}';
+  }
+  return pad+scalar(json);
+}
+
+function yamlToJson(text){
+  // 轻量 YAML 解析：支持缩进、对象、数组、标量
+  const lines=text.split(/\r?\n/).filter(l=>l.trim()!=='' && !l.trim().startsWith('#'));
+  let i=0;
+  const indentOf=l=>l.match(/^ */)[0].length;
+  function parse(depth){
+    const result={};
+    const arr=[];
+    let isArr=false;
+    while(i<lines.length){
+      const line=lines[i];
+      const ind=indentOf(line);
+      if(ind<depth) break;
+      const trimmed=line.trim();
+      if(trimmed.startsWith('- ')){
+        isArr=true;
+        let val=trimmed.slice(2);
+        if(val.includes(':') && !/^["'].*["']$/.test(val)){
+          // inline object handled by recursing on following deeper lines
+          i++; // step into
+          // build a synthetic block
+          // simpler: parse the rest under this list item
+          const item=parseItem(ind+2, val);
+          arr.push(item);
+        } else {
+          arr.push(parseScalar(val)); i++;
+        }
+      } else {
+        const idx=trimmed.indexOf(':');
+        const key=trimmed.slice(0,idx).trim();
+        let v=trimmed.slice(idx+1).trim();
+        if(v===''){
+          // nested
+          i++;
+          const next=lines[i];
+          if(next!==undefined && indentOf(next)>ind){
+            result[key]=parse(indentOf(next));
+          } else result[key]=null;
+        } else result[key]=parseScalar(v), i++;
+      }
+    }
+    return isArr?arr:(Object.keys(result).length?result:arr);
+  }
+  function parseItem(depth, firstLine){
+    // firstLine is "k: v" form of a list object item
+    const obj={};
+    const idx=firstLine.indexOf(':');
+    const key=firstLine.slice(0,idx).trim();
+    const v=firstLine.slice(idx+1).trim();
+    if(v===''){
+      // nested object following
+      obj[key]=parse(depth);
+    } else obj[key]=parseScalar(v);
+    return obj;
+  }
+  function parseScalar(s){
+    if(s==='null'||s==='~') return null;
+    if(s==='true') return true;
+    if(s==='false') return false;
+    if(/^-?\d+(\.\d+)?$/.test(s)) return Number(s);
+    if((s.startsWith('"')&&s.endsWith('"'))||(s.startsWith("'")&&s.endsWith("'"))) return s.slice(1,-1);
+    return s;
+  }
+  const r=parse(0);
+  return Array.isArray(r) && r.length===1 && typeof r[0]==='object' && Object.keys(r[0]).length && i===lines.length? r[0] : r;
+}
+
+/* ---------- Markdown / HTML / 文本工具 ---------- */
+function mdToHtml(md){
+  md=md.replace(/\r\n?/g,'\n');
+  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline=t=>{
+    const codes=[];
+    t=t.replace(/`([^`]+)`/g,(m,c)=>{codes.push(c);return `\u0000${codes.length-1}\u0000`;});
+    t=t.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,(m,alt,src)=>`<img src="${src}" alt="${esc(alt)}">`);
+    t=t.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,(m,txt,href)=>`<a href="${href}">${esc(txt)}</a>`);
+    t=t.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+    t=t.replace(/__([^_]+)__/g,'<strong>$1</strong>');
+    t=t.replace(/\*([^*]+)\*/g,'<em>$1</em>');
+    t=t.replace(/_([^_]+)_/g,'<em>$1</em>');
+    t=t.replace(/\u0000(\d+)\u0000/g,(m,idx)=>`<code>${esc(codes[+idx])}</code>`);
+    return t;
+  };
+  const lines=md.split('\n');
+  let html='', i=0;
+  while(i<lines.length){
+    const line=lines[i];
+    if(/^```/.test(line)){
+      const lang=line.slice(3).trim();
+      const buf=[]; i++;
+      while(i<lines.length && !/^```/.test(lines[i])){ buf.push(lines[i]); i++; }
+      i++;
+      html+=`<pre><code${lang?` class="language-${lang}"`:''}>${esc(buf.join('\n'))}</code></pre>\n`;
+      continue;
+    }
+    const h=line.match(/^(#{1,6})\s+(.*)$/);
+    if(h){ const lvl=h[1].length; html+=`<h${lvl}>${inline(esc(h[2].trim()))}</h${lvl}>\n`; i++; continue; }
+    if(/^[-*_]+\s*$/.test(line) && line.replace(/ /g,'').length>=3){ html+='<hr>\n'; i++; continue; }
+    if(/^>\s?/.test(line)){
+      const buf=[];
+      while(i<lines.length && /^>\s?/.test(lines[i])){ buf.push(lines[i].replace(/^>\s?/,'')); i++; }
+      html+=`<blockquote>${inline(esc(buf.join(' ')))}</blockquote>\n`;
+      continue;
+    }
+    if(/^\s*[-*+]\s+/.test(line)){
+      const buf=[];
+      while(i<lines.length && /^\s*[-*+]\s+/.test(lines[i])){ buf.push(lines[i].replace(/^\s*[-*+]\s+/,'')); i++; }
+      html+='<ul>'+buf.map(it=>`<li>${inline(esc(it))}</li>`).join('')+'</ul>\n';
+      continue;
+    }
+    if(/^\s*\d+\.\s+/.test(line)){
+      const buf=[];
+      while(i<lines.length && /^\s*\d+\.\s+/.test(lines[i])){ buf.push(lines[i].replace(/^\s*\d+\.\s+/,'')); i++; }
+      html+='<ol>'+buf.map(it=>`<li>${inline(esc(it))}</li>`).join('')+'</ol>\n';
+      continue;
+    }
+    if(line.trim()===''){ i++; continue; }
+    const buf=[];
+    while(i<lines.length && lines[i].trim()!=='' && !/^(#{1,6}\s|>\s?|\s*[-*+]\s+|\s*\d+\.\s+|```)/.test(lines[i])){
+      buf.push(lines[i]); i++;
+    }
+    html+=`<p>${inline(esc(buf.join(' ')))}</p>\n`;
+  }
+  return html;
+}
+
+function htmlToMd(html){
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const walk=(node)=>{
+    let out='';
+    node.childNodes.forEach(ch=>{
+      if(ch.nodeType===3){ out+=ch.textContent; return; }
+      if(ch.nodeType!==1) return;
+      const tag=ch.tagName.toLowerCase();
+      const txt=()=>walk(ch).trim();
+      switch(tag){
+        case 'h1': out+=`# ${txt()}\n\n`; break;
+        case 'h2': out+=`## ${txt()}\n\n`; break;
+        case 'h3': out+=`### ${txt()}\n\n`; break;
+        case 'h4': out+=`#### ${txt()}\n\n`; break;
+        case 'h5': out+=`##### ${txt()}\n\n`; break;
+        case 'h6': out+=`###### ${txt()}\n\n`; break;
+        case 'p': out+=`${txt()}\n\n`; break;
+        case 'br': out+='\n'; break;
+        case 'hr': out+='\n---\n\n'; break;
+        case 'strong': case 'b': out+=`**${txt()}**`; break;
+        case 'em': case 'i': out+=`*${txt()}*`; break;
+        case 'code': out+=`\`${ch.textContent}\``; break;
+        case 'pre': {
+          const code=ch.querySelector('code');
+          const content=code?code.textContent:ch.textContent;
+          out+='\n```\n'+content+'\n```\n\n';
+          break;
+        }
+        case 'a': out+=`[${txt()}](${ch.getAttribute('href')||''})`; break;
+        case 'img': out+=`![${ch.getAttribute('alt')||''}](${ch.getAttribute('src')||''})`; break;
+        case 'ul': {
+          let s=''; ch.querySelectorAll(':scope > li').forEach(li=>{ s+='- '+walk(li).trim()+'\n'; });
+          out+=s+'\n'; break;
+        }
+        case 'ol': {
+          let n=1,s=''; ch.querySelectorAll(':scope > li').forEach(li=>{ s+=`${n}. `+walk(li).trim()+'\n'; n++; });
+          out+=s+'\n'; break;
+        }
+        case 'li': out+=walk(ch); break;
+        case 'blockquote': out+=`> ${walk(ch).trim()}\n\n`; break;
+        case 'div': case 'section': case 'article': out+=walk(ch)+'\n\n'; break;
+        default: out+=walk(ch);
+      }
+    });
+    return out;
+  };
+  return walk(doc.body).trim()+'\n';
+}
+
+function b64encode(str){ return btoa(unescape(encodeURIComponent(str))); }
+function b64decode(b64){ return decodeURIComponent(escape(atob(b64))); }
+
+/* ---------- 图片转换 ---------- */
+function convertImage(file, target, quality, maxWidth){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.naturalWidth, h=img.naturalHeight;
+      if(maxWidth && maxWidth>0 && w>maxWidth){ h=Math.round(h*maxWidth/w); w=maxWidth; }
+      const canvas=document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      if(target==='image/png'){ ctx.clearRect(0,0,w,h); }
+      else { ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h); } // jpg/webp 无透明通道
+      ctx.drawImage(img,0,0,w,h);
+      canvas.toBlob(blob=>{
+        URL.revokeObjectURL(url);
+        blob?resolve(blob):reject(new Error('转换失败'));
+      }, target, target==='image/png'?undefined:quality);
+    };
+    img.onerror=()=>reject(new Error('无法读取该图片'));
+    img.src=url;
+  });
+}
+
+/* ---------- 主流程 ---------- */
+const IMAGE_EXT=['png','jpg','jpeg','webp','bmp','gif'];
+const IMG_OUT={ 'image/png':'png', 'image/jpeg':'jpg', 'image/webp':'webp' };
+
+const drop=document.getElementById('drop');
+const fileInput=document.getElementById('file');
+const configCard=document.getElementById('configCard');
+const fileInfo=document.getElementById('fileInfo');
+const srcFmt=document.getElementById('srcFmt');
+const targetFmt=document.getElementById('targetFmt');
+const imgOpt=document.getElementById('imgOpt');
+const dataOpt=document.getElementById('dataOpt');
+const dataHint=document.getElementById('dataHint');
+const quality=document.getElementById('quality');
+const qualityVal=document.getElementById('qualityVal');
+const maxWidth=document.getElementById('maxWidth');
+const delim=document.getElementById('delim');
+const convertBtn=document.getElementById('convertBtn');
+const status=document.getElementById('status');
+const downloadLink=document.getElementById('downloadLink');
+
+let currentFile=null, currentCategory=null;
+
+quality.addEventListener('input',()=>qualityVal.textContent=quality.value);
+
+drop.addEventListener('click',()=>fileInput.click());
+['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',ev=>{ const f=ev.dataTransfer.files[0]; if(f) loadFile(f); });
+fileInput.addEventListener('change',()=>{ if(fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(file){
+  currentFile=file;
+  const ext=getExt(file.name);
+  fileInfo.innerHTML=`已选择：<b>${file.name}</b> <span class="badge">${(file.size/1024).toFixed(1)} KB</span>`;
+
+  // 判断类别
+  if(IMAGE_EXT.includes(ext)){
+    currentCategory='image';
+    srcFmt.value=ext.toUpperCase();
+    targetFmt.innerHTML=Object.entries(IMG_OUT).map(([m,e])=>`<option value="${m}">${e.toUpperCase()}</option>`).join('');
+    imgOpt.classList.add('show'); dataOpt.classList.remove('show');
+  } else if(ext==='json'){
+    currentCategory='json'; srcFmt.value='JSON';
+    targetFmt.innerHTML=['csv','xml','yaml','pretty','minify'].map(e=>`<option value="${e}">${e==='pretty'?'JSON(格式化)':e==='minify'?'JSON(压缩)':e.toUpperCase()}</option>`).join('');
+    imgOpt.classList.remove('show'); dataOpt.classList.add('show');
+    dataHint.textContent='CSV：对象数组将转为表格；XML：保留标签；YAML：基础格式输出。';
+  } else if(ext==='csv'){
+    currentCategory='csv'; srcFmt.value='CSV';
+    targetFmt.innerHTML='<option value="json">JSON</option>';
+    imgOpt.classList.remove('show'); dataOpt.classList.add('show');
+    dataHint.textContent='CSV 首行为表头，将转换为 JSON 数组。';
+  } else if(ext==='xml'){
+    currentCategory='xml'; srcFmt.value='XML';
+    targetFmt.innerHTML='<option value="json">JSON</option>';
+    imgOpt.classList.remove('show'); dataOpt.classList.remove('show');
+  } else if(ext==='yaml'||ext==='yml'){
+    currentCategory='yaml'; srcFmt.value='YAML';
+    targetFmt.innerHTML='<option value="json">JSON</option>';
+    imgOpt.classList.remove('show'); dataOpt.classList.remove('show');
+  } else if(ext==='md'||ext==='markdown'){
+    currentCategory='md'; srcFmt.value='Markdown';
+    targetFmt.innerHTML='<option value="html">HTML</option>';
+    imgOpt.classList.remove('show'); dataOpt.classList.remove('show');
+  } else if(ext==='html'||ext==='htm'){
+    currentCategory='html'; srcFmt.value='HTML';
+    targetFmt.innerHTML='<option value="md">Markdown</option>';
+    imgOpt.classList.remove('show'); dataOpt.classList.remove('show');
+  } else if(ext==='txt'){
+    currentCategory='txt'; srcFmt.value='TXT';
+    targetFmt.innerHTML=['base64','base64-decode','url-encode','url-decode','upper','lower'].map(v=>`<option value="${v}">${v}</option>`).join('');
+    imgOpt.classList.remove('show'); dataOpt.classList.remove('show');
+  } else {
+    currentCategory=null; srcFmt.value=ext.toUpperCase();
+    targetFmt.innerHTML='<option>不支持该格式</option>';
+    imgOpt.classList.remove('show'); dataOpt.classList.remove('show');
+    status.className='status err'; status.textContent='暂不支持该文件格式，请换用支持的格式。';
+  }
+
+  // 图片默认输出避免选到自身（可选）
+  if(currentCategory==='image' && IMG_OUT[targetFmt.value.replace(/^[a-z]+\//,'')]===ext){
+    // 无所谓，保留
+  }
+  configCard.classList.remove('hidden');
+  status.textContent=''; status.className='status';
+  downloadLink.classList.add('hidden');
+}
+
+convertBtn.addEventListener('click',async()=>{
+  if(!currentFile) return;
+  convertBtn.disabled=true;
+  status.className='status'; status.textContent='转换中…';
+  downloadLink.classList.add('hidden');
+  try{
+    let blob, outName, outExt;
+    if(currentCategory==='image'){
+      const t=targetFmt.value;
+      blob=await convertImage(currentFile, t, parseFloat(quality.value), maxWidth.value?parseInt(maxWidth.value):null);
+      outExt=IMG_OUT[t]; outName=currentFile.name.replace(/\.[^.]+$/,'')+'.'+outExt;
+    } else {
+      const text=await currentFile.text();
+      const t=targetFmt.value;
+      let result;
+      if(currentCategory==='json'){
+        const obj=JSON.parse(text);
+        if(t==='csv'){ result=jsonToCsv(obj, delim.value==='\\t'?'\t':delim.value); outExt='csv'; }
+        else if(t==='xml'){ result=jsonToXml(obj); outExt='xml'; }
+        else if(t==='yaml'){ result=jsonToYaml(obj); outExt='yaml'; }
+        else if(t==='pretty'){ result=JSON.stringify(obj, null, 2); outExt='json'; }
+        else if(t==='minify'){ result=JSON.stringify(obj); outExt='json'; }
+      } else if(currentCategory==='csv'){
+        result=JSON.stringify(csvToJson(text, delim.value==='\\t'?'\t':delim.value), null, 2); outExt='json';
+      } else if(currentCategory==='xml'){
+        result=JSON.stringify(xmlToJson(text), null, 2); outExt='json';
+      } else if(currentCategory==='yaml'){
+        result=JSON.stringify(yamlToJson(text), null, 2); outExt='json';
+      } else if(currentCategory==='md'){
+        result=mdToHtml(text); outExt='html';
+      } else if(currentCategory==='html'){
+        result=htmlToMd(text); outExt='md';
+      } else if(currentCategory==='txt'){
+        if(t==='base64') result=b64encode(text);
+        else if(t==='base64-decode') result=b64decode(text.trim());
+        else if(t==='url-encode') result=encodeURIComponent(text);
+        else if(t==='url-decode') result=decodeURIComponent(text.trim());
+        else if(t==='upper') result=text.toUpperCase();
+        else if(t==='lower') result=text.toLowerCase();
+        outExt='txt';
+      }
+      const mimeMap={html:'text/html', xml:'application/xml', md:'text/markdown', json:'application/json', csv:'text/csv', yaml:'text/yaml', txt:'text/plain'};
+      const mime=(mimeMap[outExt]||'text/plain')+';charset=utf-8';
+      blob=new Blob([result],{type:mime});
+      outName=currentFile.name.replace(/\.[^.]+$/,'')+'.'+outExt;
+    }
+    const url=URL.createObjectURL(blob);
+    downloadLink.href=url; downloadLink.download=outName;
+    downloadLink.classList.remove('hidden');
+    status.className='status ok';
+    status.textContent=`✅ 转换成功！${(blob.size/1024).toFixed(1)} KB → ${outName}`;
+  }catch(err){
+    status.className='status err';
+    status.textContent='❌ '+err.message;
+  }finally{
+    convertBtn.disabled=false;
+  }
+});
+</script>
+</body>
+</html>
